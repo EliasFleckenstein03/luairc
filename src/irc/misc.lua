@@ -1,25 +1,20 @@
 ---
 -- Various useful functions that didn't fit anywhere else
 -- initialization {{{
-local base =      _G
-local irc_debug = require 'irc.debug'
-local socket =    require 'socket'
-local math =      require 'math'
-local os =        require 'os'
-local string =    require 'string'
-local table =     require 'table'
+local irc_debug = libs.debug
+local socket =    libs.socket
 -- }}}
 
 ---
 -- This module contains various useful functions which didn't fit in any of the
 -- other modules.
-module 'irc.misc'
+local misc = {}
 
 -- defaults {{{
-DELIM = ' '
-PATH_SEP = '/'
-ENDIANNESS = "big"
-INT_BYTES = 4
+misc.DELIM = ' '
+misc.PATH_SEP = '/'
+misc.ENDIANNESS = "big"
+misc.INT_BYTES = 4
 -- }}}
 
 -- private functions {{{
@@ -49,9 +44,9 @@ end
 --                in str will be considered one substring)
 -- @param rquotes String of characters to use as closing quotes
 -- @return Array of strings, one for each substring that was separated out
-function _split(str, delim, end_delim, lquotes, rquotes)
+function misc._split(str, delim, end_delim, lquotes, rquotes)
     -- handle arguments {{{
-    delim = "["..(delim or DELIM).."]"
+    delim = "["..(delim or misc.DELIM).."]"
     if end_delim then end_delim = "["..end_delim.."]" end
     if lquotes then lquotes = "["..lquotes.."]" end
     if rquotes then rquotes = "["..rquotes.."]" end
@@ -111,8 +106,8 @@ end
 -- @param path Path to the file
 -- @param sep Directory separator (optional, defaults to PATH_SEP)
 -- @return The basename of the file
-function _basename(path, sep)
-    sep = sep or PATH_SEP
+function misc._basename(path, sep)
+    sep = sep or misc.PATH_SEP
     if not path:find(sep) then return path end
     return socket.skip(2, path:find(".*" .. sep .. "(.*)"))
 end
@@ -124,8 +119,8 @@ end
 -- @param path Path to the file
 -- @param sep Directory separator (optional, defaults to PATH_SEP)
 -- @return The dirname of the file
-function _dirname(path, sep)
-    sep = sep or PATH_SEP
+function misc._dirname(path, sep)
+    sep = sep or misc.PATH_SEP
     if not path:find(sep) then return "." end
     return socket.skip(2, path:find("(.*)" .. sep .. ".*"))
 end
@@ -139,9 +134,9 @@ end
 -- @param endian Which endianness to use (big, little, host, network) (defaultsi
 --               to ENDIANNESS)
 -- @return A string whose first INT_BYTES characters make a low-level int
-function _str_to_int(str, bytes, endian)
-    bytes = bytes or INT_BYTES
-    endian = endian or ENDIANNESS
+function misc._str_to_int(str, bytes, endian)
+    bytes = bytes or misc.INT_BYTES
+    endian = endian or misc.ENDIANNESS
     local ret = ""
     for i = 0, bytes - 1 do 
         local new_byte = string.char(math.fmod(str / (2^(8 * i)), 256))
@@ -159,8 +154,8 @@ end
 -- @param int String whose bytes correspond to the bytes of a low-level int
 -- @param endian Endianness of the int argument (defaults to ENDIANNESS)
 -- @return String representation of the low-level int argument
-function _int_to_str(int, endian)
-    endian = endian or ENDIANNESS
+function misc._int_to_str(int, endian)
+    endian = endian or misc.ENDIANNESS
     local ret = 0
     for i = 1, int:len() do
         if endian == "big" or endian == "network" then ind = int:len() - i + 1
@@ -178,7 +173,7 @@ end
 -- Converts a string IP address to a low-level int.
 -- @param ip_str String representation of an IP address
 -- @return Low-level int representation of that IP address
-function _ip_str_to_int(ip_str)
+function misc._ip_str_to_int(ip_str)
     local i = 3
     local ret = 0
     for num in ip_str:gmatch("%d+") do
@@ -195,7 +190,7 @@ end
 -- Converts an int to a string IP address.
 -- @param ip_int Low-level int representation of an IP address
 -- @return String representation of that IP address
-function _ip_int_to_str(ip_int)
+function misc._ip_int_to_str(ip_int)
     local ip = {}
     for i = 3, 0, -1 do
         local new_num = math.floor(ip_int / 2^(i * 8))
@@ -212,7 +207,7 @@ end
 -- @param filename Filename to start with
 -- @return Filename (same as the one we started with, except possibly with some
 --         numbers appended) which does not currently exist on the filesystem
-function _get_unique_filename(filename)
+function misc._get_unique_filename(filename)
     if not exists(filename) then return filename end
 
     local count = 1
@@ -231,8 +226,8 @@ end
 -- @param fn Function to try to call
 -- @param ... Arguments to fn
 -- @return The return values of fn, if it was successfully called
-function _try_call(fn, ...)
-    if base.type(fn) == "function" then
+function misc._try_call(fn, ...)
+    if type(fn) == "function" then
         return fn(...)
     end
 end
@@ -245,8 +240,8 @@ end
 -- @param fn Function to try to call
 -- @param ... Arguments to fn
 -- @return The return values of fn, if it was successfully called
-function _try_call_warn(msg, fn, ...)
-    if base.type(fn) == "function" then
+function misc._try_call_warn(msg, fn, ...)
+    if type(fn) == "function" then
         return fn(...)
     else
         irc_debug._warn(msg)
@@ -257,16 +252,16 @@ end
 -- _value_iter {{{
 --
 -- Iterator to iterate over just the values of a table.
-function _value_iter(state, arg, pred)
-    for k, v in base.pairs(state) do
+function misc._value_iter(state, arg, pred)
+    for k, v in pairs(state) do
         if arg == v then arg = k end
     end
-    local key, val = base.next(state, arg)
+    local key, val = next(state, arg)
     if not key then return end
 
-    if base.type(pred) == "function" then
+    if type(pred) == "function" then
         while not pred(val) do
-            key, val = base.next(state, key)
+            key, val = next(state, key)
             if not key then return end
         end
     end
@@ -281,7 +276,7 @@ end
 -- @return nick
 -- @return username (if it exists)
 -- @return hostname (if it exists)
-function _parse_user(user)
+function misc._parse_user(user)
     local found, bang, nick = user:find("^([^!]*)!")
     if found then
         user = user:sub(bang + 1)
@@ -301,3 +296,5 @@ function _parse_user(user)
 end
 -- }}}
 -- }}}
+
+return misc

@@ -1,31 +1,46 @@
 ---
 -- Implementation of the main LuaIRC module
 
--- initialization {{{
-local base =      _G
-local constants = require 'irc.constants'
-local ctcp =      require 'irc.ctcp'
-local c =         ctcp._ctcp_quote
-local irc_debug = require 'irc.debug'
-local message =   require 'irc.message'
-local misc =      require 'irc.misc'
-local socket =    require 'socket'
-local os =        require 'os'
-local string =    require 'string'
-local table =     require 'table'
--- }}}
-
 ---
 -- LuaIRC - IRC framework written in Lua
 -- @release 0.3
-module 'irc'
+local irc = {}
 
 -- constants {{{
-_VERSION = 'LuaIRC 0.3'
+irc._VERSION = 'LuaIRC 0.3 (Lua 5.3 Port)'
+-- }}}
+
+-- libraries {{{
+local libs = {}
+
+libs.irc    =    irc
+libs.socket =    require 'socket'
+
+local old_libs = _G.libs
+_G.libs = libs
+
+libs.constants = require 'irc.constants'
+libs.ctcp =      require 'irc.ctcp'
+libs.debug =     require 'irc.debug'
+libs.misc =      require 'irc.misc'
+libs.channel =   require 'irc.channel'
+libs.dcc =       require 'irc.dcc'
+libs.message =   require 'irc.message'
+
+_G.libs = old_libs
+
+-- localize modules {{{
+local constants = libs.constants
+local ctcp =      libs.ctcp
+local c =         ctcp._ctcp_quote
+local irc_debug = libs.debug
+local message =   libs.message
+local misc =      libs.misc
+local socket =    libs.socket
 -- }}}
 
 -- classes {{{
-local Channel = base.require 'irc.channel'
+local Channel = libs.channel
 -- }}}
 
 -- local variables {{{
@@ -51,14 +66,14 @@ local ip = nil
 -- }}}
 
 -- defaults {{{
-TIMEOUT = 60          -- connection timeout
-NETWORK = "localhost" -- default network
-PORT = 6667           -- default port
-NICK = "luabot"       -- default nick
-USERNAME = "LuaIRC"   -- default username
-REALNAME = "LuaIRC"   -- default realname
-DEBUG = false         -- whether we want extra debug information
-OUTFILE = nil         -- file to send debug output to - nil is stdout
+irc.TIMEOUT = 60          -- connection timeout
+irc.NETWORK = "localhost" -- default network
+irc.PORT = 6667           -- default port
+irc.NICK = "luabot"       -- default nick
+irc.USERNAME = "LuaIRC"   -- default username
+irc.REALNAME = "LuaIRC"   -- default realname
+irc.DEBUG = false         -- whether we want extra debug information
+irc.OUTFILE = nil         -- file to send debug output to - nil is stdout
 -- }}}
 
 -- private functions {{{
@@ -68,21 +83,21 @@ local function main_loop_iter()
     local rready, wready, err = socket.select(rsockets, wsockets)
     if err then irc_debug._err(err); return false; end
 
-    for _, sock in base.ipairs(rready) do
+    for _, sock in ipairs(rready) do
         local cb = socket.protect(rcallbacks[sock])
         local ret, err = cb(sock)
         if not ret then
             irc_debug._warn("socket error: " .. err)
-            _unregister_socket(sock, 'r')
+            irc._unregister_socket(sock, 'r')
         end
     end
 
-    for _, sock in base.ipairs(wready) do
+    for _, sock in ipairs(wready) do
         local cb = socket.protect(wcallbacks[sock])
         local ret, err = cb(sock)
         if not ret then
             irc_debug._warn("socket error: " .. err)
-            _unregister_socket(sock, 'w')
+            irc._unregister_socket(sock, 'w')
         end
     end
 
@@ -103,7 +118,7 @@ local function incoming_message(sock)
     local msg = message._parse(raw_msg)
     misc._try_call_warn("Unhandled server message: " .. msg.command,
                         handlers["on_" .. msg.command:lower()],
-                        (misc._parse_user(msg.from)), base.unpack(msg.args))
+                        (misc._parse_user(msg.from)), table.unpack(msg.args))
     return true
 end
 -- }}}
@@ -119,7 +134,7 @@ end
 -- command handlers {{{
 -- on_nick {{{
 function handlers.on_nick(from, new_nick)
-    for chan in channels() do
+    for chan in irc.channels() do
         chan:_change_nick(from, new_nick)
     end
     callback("nick_change", new_nick, from)
@@ -128,7 +143,7 @@ end
 
 -- on_join {{{
 function handlers.on_join(from, chan)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received join message for unknown channel: " .. chan)
     if serverinfo.channels[chan].join_complete then
         serverinfo.channels[chan]:_add_user(from)
@@ -157,7 +172,7 @@ function handlers.on_mode(from, to, mode_string, ...)
 
     if to:sub(1, 1) == "#" then
         -- handle channel mode requests {{{
-        base.assert(serverinfo.channels[to],
+        assert(serverinfo.channels[to],
                     "Received mode change for unknown channel: " .. to)
         local chan = serverinfo.channels[to]
         local ind = 1
@@ -204,7 +219,7 @@ end
 
 -- on_topic {{{
 function handlers.on_topic(from, chan, new_topic)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received topic message for unknown channel: " .. chan)
     serverinfo.channels[chan]._topic.text = new_topic
     serverinfo.channels[chan]._topic.user = from
@@ -223,7 +238,7 @@ end
 
 -- on_kick {{{
 function handlers.on_kick(from, chan, to)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received kick message for unknown channel: " .. chan)
     if serverinfo.channels[chan].join_complete then
         serverinfo.channels[chan]:_remove_user(to)
@@ -235,7 +250,7 @@ end
 -- on_privmsg {{{
 function handlers.on_privmsg(from, to, msg)
     local msgs = ctcp._ctcp_split(msg)
-    for _, v in base.ipairs(msgs) do
+    for _, v in ipairs(msgs) do
         local msg = v.str
         if v.ctcp then
             -- ctcp message {{{
@@ -245,16 +260,16 @@ function handlers.on_privmsg(from, to, msg)
             table.remove(words, 1)
             -- not using try_call here because the ctcp specification requires
             -- an error response to nonexistant commands
-            if base.type(ctcp_handlers[cb]) == "function" then
+            if type(ctcp_handlers[cb]) == "function" then
                 ctcp_handlers[cb](from, to, table.concat(words, " "))
             else
-                notice(from, c("ERRMSG", received_command, ":Unknown query"))
+                irc.notice(from, c("ERRMSG", received_command, ":Unknown query"))
             end
             -- }}}
         else
             -- normal message {{{
             if to:sub(1, 1) == "#" then
-                base.assert(serverinfo.channels[to],
+                assert(serverinfo.channels[to],
                             "Received channel msg from unknown channel: " .. to)
                 callback("channel_msg", serverinfo.channels[to], from, msg)
             else
@@ -269,7 +284,7 @@ end
 -- on_notice {{{
 function handlers.on_notice(from, to, msg)
     local msgs = ctcp._ctcp_split(msg)
-    for _, v in base.ipairs(msgs) do
+    for _, v in ipairs(msgs) do
         local msg = v.str
         if v.ctcp then
             -- ctcp message {{{
@@ -283,7 +298,7 @@ function handlers.on_notice(from, to, msg)
         else
             -- normal message {{{
             if to:sub(1, 1) == "#" then
-                base.assert(serverinfo.channels[to],
+                assert(serverinfo.channels[to],
                             "Received channel msg from unknown channel: " .. to)
                 callback("channel_notice", serverinfo.channels[to], from, msg)
             else
@@ -297,7 +312,7 @@ end
 
 -- on_quit {{{
 function handlers.on_quit(from, quit_msg)
-    for name, chan in base.pairs(serverinfo.channels) do
+    for name, chan in pairs(serverinfo.channels) do
         chan:_remove_user(from)
     end
     callback("quit", from, quit_msg)
@@ -307,7 +322,7 @@ end
 -- on_ping {{{
 -- respond to server pings to make sure it knows we are alive
 function handlers.on_ping(from, respond_to)
-    send("PONG", respond_to)
+    irc.send("PONG", respond_to)
 end
 -- }}}
 -- }}}
@@ -316,7 +331,7 @@ end
 -- on_rpl_topic {{{
 -- catch topic changes
 function handlers.on_rpl_topic(from, chan, topic)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received topic information about unknown channel: " .. chan)
     serverinfo.channels[chan]._topic.text = topic
 end
@@ -324,7 +339,7 @@ end
 
 -- on_rpl_notopic {{{
 function handlers.on_rpl_notopic(from, chan)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received topic information about unknown channel: " .. chan)
     serverinfo.channels[chan]._topic.text = ""
 end
@@ -333,21 +348,21 @@ end
 -- on_rpl_topicdate {{{
 -- "topic was set by <user> at <time>"
 function handlers.on_rpl_topicdate(from, chan, user, time)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received topic information about unknown channel: " .. chan)
     serverinfo.channels[chan]._topic.user = user
-    serverinfo.channels[chan]._topic.time = base.tonumber(time)
+    serverinfo.channels[chan]._topic.time = tonumber(time)
 end
 -- }}}
 
 -- on_rpl_namreply {{{
 -- handles a NAMES reply
 function handlers.on_rpl_namreply(from, chanmode, chan, userlist)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received user information about unknown channel: " .. chan)
     serverinfo.channels[chan]._chanmode = constants.chanmodes[chanmode]
     local users = misc._split(userlist)
-    for k,v in base.ipairs(users) do
+    for k,v in ipairs(users) do
         if v:sub(1, 1) == "@" or v:sub(1, 1) == "+" then
             local nick = v:sub(2)
             serverinfo.channels[chan]:_add_user(nick, v:sub(1, 1))
@@ -362,7 +377,7 @@ end
 -- when we get this message, the channel join has completed, so call the
 -- external cb
 function handlers.on_rpl_endofnames(from, chan)
-    base.assert(serverinfo.channels[chan],
+    assert(serverinfo.channels[chan],
                 "Received user information about unknown channel: " .. chan)
     if not serverinfo.channels[chan].join_complete then
         callback("me_join", serverinfo.channels[chan])
@@ -425,7 +440,7 @@ function handlers.on_rpl_whoischannels(from, nick, channel_list)
     if not requestinfo.whois[nick].channels then
         requestinfo.whois[nick].channels = {}
     end
-    for _, channel in base.ipairs(misc._split(channel_list)) do
+    for _, channel in ipairs(misc._split(channel_list)) do
         table.insert(requestinfo.whois[nick].channels, channel)
     end
 end
@@ -466,7 +481,7 @@ function handlers.on_rpl_endofwhois(from, nick)
     local cb = table.remove(icallbacks.whois[nick], 1)
     cb(requestinfo.whois[nick])
     requestinfo.whois[nick] = nil
-    if #icallbacks.whois[nick] > 0 then send("WHOIS", nick)
+    if #icallbacks.whois[nick] > 0 then irc.send("WHOIS", nick)
     else icallbacks.whois[nick] = nil
     end
 end
@@ -476,7 +491,7 @@ end
 function handlers.on_rpl_version(from, version, server, comments)
     local cb = table.remove(icallbacks.serverversion[server], 1)
     cb({version = version, server = server, comments = comments})
-    if #icallbacks.serverversion[server] > 0 then send("VERSION", server)
+    if #icallbacks.serverversion[server] > 0 then irc.send("VERSION", server)
     else icallbacks.serverversion[server] = nil
     end
 end
@@ -486,7 +501,7 @@ end
 function on_rpl_time(from, server, time)
     local cb = table.remove(icallbacks.servertime[server], 1)
     cb({time = time, server = server})
-    if #icallbacks.servertime[server] > 0 then send("TIME", server)
+    if #icallbacks.servertime[server] > 0 then irc.send("TIME", server)
     else icallbacks.servertime[server] = nil
     end
 end
@@ -498,7 +513,7 @@ end
 -- on_action {{{
 function ctcp_handlers.on_action(from, to, message)
     if to:sub(1, 1) == "#" then
-        base.assert(serverinfo.channels[to],
+        assert(serverinfo.channels[to],
                     "Received channel msg from unknown channel: " .. to)
         callback("channel_act", serverinfo.channels[to], from, message)
     else
@@ -511,7 +526,7 @@ end
 -- TODO: can we not have this handler be registered unless the dcc module is
 -- loaded?
 function ctcp_handlers.on_dcc(from, to, message)
-    local type, argument, address, port, size = base.unpack(misc._split(message, " ", nil, '"', '"'))
+    local type, argument, address, port, size = table.unpack(misc._split(message, " ", nil, '"', '"'))
     address = misc._ip_int_to_str(address)
     if type == "SEND" then
         if callback("dcc_send", from, to, argument, address, port, size) then
@@ -525,25 +540,25 @@ end
 
 -- on_version {{{
 function ctcp_handlers.on_version(from, to)
-    notice(from, c("VERSION", _VERSION .. " running under " .. base._VERSION .. " with " .. socket._VERSION))
+    irc.notice(from, c("VERSION", irc._VERSION .. " running under " .. _VERSION .. " with " .. socket._VERSION))
 end
 -- }}}
 
 -- on_errmsg {{{
 function ctcp_handlers.on_errmsg(from, to, message)
-    notice(from, c("ERRMSG", message, ":No error has occurred"))
+    irc.notice(from, c("ERRMSG", message, ":No error has occurred"))
 end
 -- }}}
 
 -- on_ping {{{
 function ctcp_handlers.on_ping(from, to, timestamp)
-    notice(from, c("PING", timestamp))
+    irc.notice(from, c("PING", timestamp))
 end
 -- }}}
 
 -- on_time {{{
 function ctcp_handlers.on_time(from, to)
-    notice(from, c("TIME", os.date()))
+    irc.notice(from, c("TIME", os.date()))
 end
 -- }}}
 -- }}}
@@ -559,7 +574,7 @@ function ctcp_handlers.on_rpl_version(from, to, version)
     local lfrom = from:lower()
     local cb = table.remove(icallbacks.ctcp_version[lfrom], 1)
     cb({version = version, nick = from})
-    if #icallbacks.ctcp_version[lfrom] > 0 then say(from, c("VERSION"))
+    if #icallbacks.ctcp_version[lfrom] > 0 then irc.say(from, c("VERSION"))
     else icallbacks.ctcp_version[lfrom] = nil
     end
 end
@@ -576,7 +591,7 @@ function ctcp_handlers.on_rpl_ping(from, to, timestamp)
     local lfrom = from:lower()
     local cb = table.remove(icallbacks.ctcp_ping[lfrom], 1)
     cb({time = os.time() - timestamp, nick = from})
-    if #icallbacks.ctcp_ping[lfrom] > 0 then say(from, c("PING", os.time()))
+    if #icallbacks.ctcp_ping[lfrom] > 0 then irc.say(from, c("PING", os.time()))
     else icallbacks.ctcp_ping[lfrom] = nil
     end
 end
@@ -587,7 +602,7 @@ function ctcp_handlers.on_rpl_time(from, to, time)
     local lfrom = from:lower()
     local cb = table.remove(icallbacks.ctcp_time[lfrom], 1)
     cb({time = time, nick = from})
-    if #icallbacks.ctcp_time[lfrom] > 0 then say(from, c("TIME"))
+    if #icallbacks.ctcp_time[lfrom] > 0 then irc.say(from, c("TIME"))
     else icallbacks.ctcp_time[lfrom] = nil
     end
 end
@@ -605,7 +620,7 @@ end
 -- @param mode 'r' if the socket is for reading, 'w' if for writing
 -- @param cb   Callback to call when the socket is ready for reading/writing.
 --             It will be called with the socket as the single argument.
-function _register_socket(sock, mode, cb)
+function irc._register_socket(sock, mode, cb)
     local socks, cbs
     if mode == 'r' then
         socks = rsockets
@@ -614,7 +629,7 @@ function _register_socket(sock, mode, cb)
         socks = wsockets
         cbs = wcallbacks
     end
-    base.assert(not cbs[sock], "socket already registered")
+    assert(not cbs[sock], "socket already registered")
     table.insert(socks, sock)
     cbs[sock] = cb
 end
@@ -625,7 +640,7 @@ end
 -- Remove a previously registered socket.
 -- @param sock Socket to unregister
 -- @param mode 'r' to unregister it for reading, 'w' for writing
-function _unregister_socket(sock, mode)
+function irc._unregister_socket(sock, mode)
     local socks, cbs
     if mode == 'r' then
         socks = rsockets
@@ -634,7 +649,7 @@ function _unregister_socket(sock, mode)
         socks = wsockets
         cbs = wcallbacks
     end
-    for i, v in base.ipairs(socks) do
+    for i, v in ipairs(socks) do
         if v == sock then table.remove(socks, i); break; end
     end
     cbs[sock] = nil
@@ -670,22 +685,22 @@ end
 --                                  dropping an idle connection
 --                                  (default: '60')</li>
 --             </ul>
-function connect(args)
-    local network = args.network or NETWORK
-    local port = args.port or PORT
-    local nick = args.nick or NICK
-    local username = args.username or USERNAME
-    local realname = args.realname or REALNAME
-    local timeout = args.timeout or TIMEOUT
+function irc.connect(args)
+    local network = args.network or irc.NETWORK
+    local port = args.port or irc.PORT
+    local nick = args.nick or irc.NICK
+    local username = args.username or irc.USERNAME
+    local realname = args.realname or irc.REALNAME
+    local timeout = args.timeout or irc.TIMEOUT
     serverinfo.connecting = true
-    if OUTFILE then irc_debug.set_output(OUTFILE) end
-    if DEBUG then irc_debug.enable() end
-    irc_sock = base.assert(socket.connect(network, port))
+    if irc.OUTFILE then irc_debug.set_output(irc.OUTFILE) end
+    if irc.DEBUG then irc_debug.enable() end
+    irc_sock = assert(socket.connect(network, port))
     irc_sock:settimeout(timeout)
-    _register_socket(irc_sock, 'r', incoming_message)
-    if args.pass then send("PASS", args.pass) end
-    send("NICK", nick)
-    send("USER", username, get_ip(), network, realname)
+    irc._register_socket(irc_sock, 'r', incoming_message)
+    if args.pass then irc.send("PASS", args.pass) end
+    irc.send("NICK", nick)
+    irc.send("USER", username, irc.get_ip(), network, realname)
     begin_main_loop()
 end
 -- }}}
@@ -694,9 +709,9 @@ end
 ---
 -- Close the connection to the irc server.
 -- @param message Quit message (optional, defaults to 'Leaving')
-function quit(message)
+function irc.quit(message)
     message = message or "Leaving"
-    send("QUIT", message)
+    irc.send("QUIT", message)
     serverinfo.connected = false
 end
 -- }}}
@@ -705,10 +720,10 @@ end
 ---
 -- Join a channel.
 -- @param channel Channel to join
-function join(channel)
+function irc.join(channel)
     if not channel then return end
     serverinfo.channels[channel] = Channel.new(channel)
-    send("JOIN", channel)
+    irc.send("JOIN", channel)
 end
 -- }}}
 
@@ -716,10 +731,10 @@ end
 ---
 -- Leave a channel.
 -- @param channel Channel to leave
-function part(channel)
+function irc.part(channel)
     if not channel then return end
     serverinfo.channels[channel] = nil
-    send("PART", channel)
+    irc.send("PART", channel)
 end
 -- }}}
 
@@ -728,10 +743,10 @@ end
 -- Send a message to a user or channel.
 -- @param name User or channel to send the message to
 -- @param message Message to send
-function say(name, message)
+function irc.say(name, message)
     if not name then return end
     message = message or ""
-    send("PRIVMSG", name, message)
+    irc.send("PRIVMSG", name, message)
 end
 -- }}}
 
@@ -740,10 +755,10 @@ end
 -- Send a notice to a user or channel.
 -- @param name User or channel to send the notice to
 -- @param message Message to send
-function notice(name, message)
+function irc.notice(name, message)
     if not name then return end
     message = message or ""
-    send("NOTICE", name, message)
+    irc.send("NOTICE", name, message)
 end
 -- }}}
 
@@ -752,10 +767,10 @@ end
 -- Perform a /me action.
 -- @param name User or channel to send the action to
 -- @param action Action to send
-function act(name, action)
+function irc.act(name, action)
     if not name then return end
     action = action or ""
-    send("PRIVMSG", name, c("ACTION", action))
+    irc.send("PRIVMSG", name, c("ACTION", action))
 end
 -- }}}
 -- }}}
@@ -771,13 +786,13 @@ end
 --           <li><i>version:</i>  the server version</li>
 --           <li><i>comments:</i> other data provided by the server</li>
 --           </ul>
-function server_version(cb)
+function irc.server_version(cb)
     -- apparently the optional server parameter isn't supported for servers
     -- which you are not directly connected to (freenode specific?)
     local server = serverinfo.host
     if not icallbacks.serverversion[server] then
         icallbacks.serverversion[server] = {cb}
-        send("VERSION", server)
+        irc.send("VERSION", server)
     else
         table.insert(icallbacks.serverversion[server], cb)
     end
@@ -808,12 +823,12 @@ end
 --                                  joined</li>
 --           </ul>
 -- @param nick User to request WHOIS information about
-function whois(cb, nick)
+function irc.whois(cb, nick)
     nick = nick:lower()
     requestinfo.whois[nick] = {}
     if not icallbacks.whois[nick] then
         icallbacks.whois[nick] = {cb}
-        send("WHOIS", nick)
+        irc.send("WHOIS", nick)
     else
         table.insert(icallbacks.whois[nick], cb)
     end
@@ -829,13 +844,13 @@ end
 --           <li><i>server:</i> the server which responded to the request</li>
 --           <li><i>time:</i>   the time reported by the server</li>
 --           </ul>
-function server_time(cb)
+function irc.server_time(cb)
     -- apparently the optional server parameter isn't supported for servers
     -- which you are not directly connected to (freenode specific?)
     local server = serverinfo.host
     if not icallbacks.servertime[server] then
         icallbacks.servertime[server] = {cb}
-        send("TIME", server)
+        irc.send("TIME", server)
     else
         table.insert(icallbacks.servertime[server], cb)
     end
@@ -854,11 +869,11 @@ end
 --           <li><i>time:</i> the roundtrip ping time, in seconds</li>
 --           </ul>
 -- @param nick User to ping
-function ctcp_ping(cb, nick)
+function irc.ctcp_ping(cb, nick)
     nick = nick:lower()
     if not icallbacks.ctcp_ping[nick] then
         icallbacks.ctcp_ping[nick] = {cb}
-        say(nick, c("PING", os.time()))
+        irc.say(nick, c("PING", os.time()))
     else
         table.insert(icallbacks.ctcp_ping[nick], cb)
     end
@@ -875,11 +890,11 @@ end
 --           <li><i>time:</i> the localtime reported by the remote client</li>
 --           </ul>
 -- @param nick User to request the localtime from
-function ctcp_time(cb, nick)
+function irc.ctcp_time(cb, nick)
     nick = nick:lower()
     if not icallbacks.ctcp_time[nick] then
         icallbacks.ctcp_time[nick] = {cb}
-        say(nick, c("TIME"))
+        irc.say(nick, c("TIME"))
     else
         table.insert(icallbacks.ctcp_time[nick], cb)
     end
@@ -896,11 +911,11 @@ end
 --           <li><i>version:</i> the version reported by the remote client</li>
 --           </ul>
 -- @param nick User to request the client version from
-function ctcp_version(cb, nick)
+function irc.ctcp_version(cb, nick)
     nick = nick:lower()
     if not icallbacks.ctcp_version[nick] then
         icallbacks.ctcp_version[nick] = {cb}
-        say(nick, c("VERSION"))
+        irc.say(nick, c("VERSION"))
     else
         table.insert(icallbacks.ctcp_version[nick], cb)
     end
@@ -917,7 +932,7 @@ end
 --             callback for this event
 -- @return Value of the original callback for this event (or nil if no previous
 --         callback had been set)
-function register_callback(name, fn)
+function irc.register_callback(name, fn)
     local old_handler = user_handlers[name]
     user_handlers[name] = fn
     return old_handler
@@ -936,10 +951,10 @@ end
 --                an array. Strings are sent literally, arrays are CTCP quoted
 --                as a group. The last argument (if it exists) is preceded by
 --                a : (so it may contain spaces).
-function send(command, ...)
+function irc.send(command, ...)
     if not serverinfo.connected and not serverinfo.connecting then return end
     local message = command
-    for i, v in base.ipairs({...}) do
+    for i, v in ipairs({...}) do
         if i == #{...} then
             v = ":" .. v
         end
@@ -958,7 +973,7 @@ end
 -- Get the local IP address for the server connection.
 -- @return A string representation of the local IP address that the IRC server
 --         connection is communicating on
-function get_ip()
+function irc.get_ip()
     return (ip or irc_sock:getsockname())
 end
 -- }}}
@@ -967,7 +982,7 @@ end
 ---
 -- Set the local IP manually (to allow for NAT workarounds)
 -- @param new_ip IP address to set
-function set_ip(new_ip)
+function irc.set_ip(new_ip)
     ip = new_ip
 end
 -- }}}
@@ -979,7 +994,7 @@ end
 -- channels() is an iterator function for use in for loops.
 -- For example, <pre>for chan in irc.channels() do print(chan:name) end</pre>
 -- @see irc.channel
-function channels()
+function irc.channels()
     return function(state, arg)
                return misc._value_iter(state, arg,
                                        function(v)
@@ -992,3 +1007,5 @@ end
 -- }}}
 -- }}}
 -- }}}
+
+return irc

@@ -1,14 +1,10 @@
 ---
 -- Implementation of the CTCP protocol
--- initialization {{{
-local base = _G
-local table = require "table"
--- }}}
 
 ---
 -- This module implements the various quoting and escaping requirements of the
 -- CTCP protocol.
-module "irc.ctcp"
+local ctcp = {}
 
 -- internal functions {{{
 -- _low_quote {{{
@@ -17,7 +13,7 @@ module "irc.ctcp"
 -- to appear in an IRC packet).
 -- @param ... Strings to quote together, space separated
 -- @return Quoted string
-function _low_quote(...)
+function ctcp._low_quote(...)
     local str = table.concat({...}, " ")
     return str:gsub("[%z\n\r\020]", {["\000"] = "\0200",
                                      ["\n"]   = "\020n",
@@ -31,7 +27,7 @@ end
 -- Removes low level quoting done by low_quote.
 -- @param str String with low level quoting applied to it
 -- @return String with those quoting methods stripped off
-function _low_dequote(str)
+function ctcp._low_dequote(str)
     return str:gsub("\020(.?)", function(s)
                                     if s == "0" then return "\000" end
                                     if s == "n" then return "\n" end
@@ -48,7 +44,7 @@ end
 -- data (by the calling program).
 -- @param ... Strings to apply CTCP quoting to together, space separated
 -- @return String with CTCP quoting applied
-function _ctcp_quote(...)
+function ctcp._ctcp_quote(...)
     local str = table.concat({...}, " ")
     local ret = str:gsub("[\001\\]", {["\001"] = "\\a",
                                       ["\\"]   = "\\\\"})
@@ -62,7 +58,7 @@ end
 -- data (likely by ctcp_split).
 -- @param str String with CTCP quoting
 -- @return String with all CTCP quoting stripped
-function _ctcp_dequote(str)
+function ctcp._ctcp_dequote(str)
     local ret = str:gsub("^\001", ""):gsub("\001$", "")
     return ret:gsub("\\(.?)", function(s)
                                   if s == "a" then return "\001" end
@@ -84,7 +80,7 @@ end
 --         <li><i>ctcp:</i> True if the section was a CTCP message, false
 --                          otherwise</li>
 --         </ul>
-function _ctcp_split(str)
+function ctcp._ctcp_split(str)
     local ret = {}
     local iter = 1
     while true do
@@ -103,7 +99,7 @@ function _ctcp_split(str)
         end
         if not s then break end
         if ctcp_string ~= "" then
-            table.insert(ret, {str = _ctcp_dequote(ctcp_string), ctcp = true})
+            table.insert(ret, {str = ctcp._ctcp_dequote(ctcp_string), ctcp = true})
         end
 
         iter = e + 1
@@ -113,3 +109,5 @@ function _ctcp_split(str)
 end
 -- }}}
 -- }}}
+
+return ctcp

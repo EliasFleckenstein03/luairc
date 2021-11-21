@@ -1,13 +1,13 @@
 ---
 -- This module holds various constants used by the IRC protocol.
-module "irc.constants"
+local constants = {}
 
 -- protocol constants {{{
-IRC_MAX_MSG = 512
+constants.IRC_MAX_MSG = 512
 -- }}}
 
 -- server replies {{{
-replies = {
+constants.replies = {
 -- Command responses {{{
  [001] = "RPL_WELCOME",
  [002] = "RPL_YOURHOST",
@@ -183,9 +183,11 @@ replies = {
 -- }}}
 
 -- chanmodes {{{
-chanmodes = {
+constants.chanmodes = {
  ["@"] = "secret",
  ["*"] = "private",
  ["="] = "public"
 }
 -- }}}
+
+return constants

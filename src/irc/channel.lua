@@ -2,17 +2,15 @@
 -- Implementation of the Channel class
 
 -- initialization {{{
-local base =   _G
-local irc =    require 'irc'
-local misc =   require 'irc.misc'
-local socket = require 'socket'
-local table =  require 'table'
+local irc =    libs.irc
+local misc =   libs.misc
+local socket = libs.socket
 -- }}}
 
 ---
 -- This module implements a channel object representing a single channel we
 -- have joined.
-module 'irc.channel'
+local channel = {}
 
 -- object metatable {{{
 -- TODO: this <br /> shouldn't be necessary - bug in luadoc
@@ -37,7 +35,7 @@ local mt = {
                      elseif key == "chanmode" then
                          return self._chanmode
                      else
-                         return _M[key]
+                         return channel[key]
                      end
                  end,
     -- }}}
@@ -50,7 +48,7 @@ local mt = {
                      elseif key == "chanmode" then
                          return
                      else
-                         base.rawset(self, key, value)
+                         rawset(self, key, value)
                      end
                  end,
     -- }}}
@@ -58,12 +56,12 @@ local mt = {
     __concat =   function(first, second)
                      local first_str, second_str
 
-                     if base.type(first) == "table" then
+                     if type(first) == "table" then
                          first_str = first._name
                      else
                          first_str = first
                      end
-                     if base.type(second) == "table" then
+                     if type(second) == "table" then
                          second_str = second._name
                      else
                          second_str = second
@@ -88,7 +86,7 @@ local mt = {
 -- @param self   Channel object
 -- @param set    True to set the mode, false to unset it
 -- @param letter Letter of the mode
-local function set_basic_mode(self, set, letter)
+local function set_basic_mode(set, letter)
     if set then
         irc.send("MODE", self.name, "+" .. letter)
     else
@@ -107,7 +105,7 @@ end
 -- @param self Channel object
 -- @param user Nick of the user to add
 -- @param mode Mode (op/voice) of the user, in symbolic form (@/+)
-function _add_user(self, user, mode)
+function channel:_add_user(user, mode)
     mode = mode or ''
     self._members[user] = mode .. user
 end
@@ -118,7 +116,7 @@ end
 -- Remove a user from the channel's internal user list.
 -- @param self Channel object
 -- @param user Nick of the user to remove
-function _remove_user(self, user)
+function channel:_remove_user(user)
     self._members[user] = nil
 end
 -- }}}
@@ -130,7 +128,7 @@ end
 -- @param user Nick of the user to affect
 -- @param on   True if the mode is being set, false if it's being unset
 -- @param mode 'o' for op, 'v' for voice
-function _change_status(self, user, on, mode)
+function channel:_change_status(user, on, mode)
     if on then
         if mode == 'o' then
             self._members[user] = '@' .. user
@@ -152,7 +150,7 @@ end
 -- @param self     Channel object
 -- @param old_nick User's old nick
 -- @param new_nick User's new nick
-function _change_nick(self, old_nick, new_nick)
+function channel:_change_nick(old_nick, new_nick)
     for member in self:each_member() do
         local member_nick = member:gsub('@+', '')
         if member_nick == old_nick then
@@ -172,8 +170,8 @@ end
 -- Creates a new Channel object.
 -- @param chan Name of the new channel
 -- @return The new channel instance
-function new(chan)
-    return base.setmetatable({_name = chan, _topic = {}, _chanmode = "",
+function channel.new(chan)
+    return setmetatable({_name = chan, _topic = {}, _chanmode = "",
                               _members = {}}, mt)
 end
 -- }}}
@@ -184,7 +182,7 @@ end
 ---
 -- Iterator over the ops in the channel
 -- @param self Channel object
-function each_op(self)
+function channel:each_op()
     return function(state, arg)
                return misc._value_iter(state, arg,
                                        function(v)
@@ -200,7 +198,7 @@ end
 ---
 -- Iterator over the voiced users in the channel
 -- @param self Channel object
-function each_voice(self)
+function channel:each_voice()
     return function(state, arg)
                return misc._value_iter(state, arg,
                                        function(v)
@@ -216,7 +214,7 @@ end
 ---
 -- Iterator over the normal users in the channel
 -- @param self Channel object
-function each_user(self)
+function channel:each_user()
     return function(state, arg)
                return misc._value_iter(state, arg,
                                        function(v)
@@ -233,7 +231,7 @@ end
 ---
 -- Iterator over all users in the channel
 -- @param self Channel object
-function each_member(self)
+function channel:each_member()
     return misc._value_iter, self._members, nil
 end
 -- }}}
@@ -245,7 +243,7 @@ end
 -- Gets an array of all the ops in the channel.
 -- @param self Channel object
 -- @return Array of channel ops
-function ops(self)
+function channel:ops()
     local ret = {}
     for nick in self:each_op() do
         table.insert(ret, nick)
@@ -259,7 +257,7 @@ end
 -- Gets an array of all the voiced users in the channel.
 -- @param self Channel object
 -- @return Array of channel voiced users
-function voices(self)
+function channel:voices()
     local ret = {}
     for nick in self:each_voice() do
         table.insert(ret, nick)
@@ -273,7 +271,7 @@ end
 -- Gets an array of all the normal users in the channel.
 -- @param self Channel object
 -- @return Array of channel normal users
-function users(self)
+function channel:users()
     local ret = {}
     for nick in self:each_user() do
         table.insert(ret, nick)
@@ -287,7 +285,7 @@ end
 -- Gets an array of all the users in the channel.
 -- @param self Channel object
 -- @return Array of channel users
-function members(self)
+function channel:members()
     local ret = {}
     -- not just returning self._members, since the return value shouldn't be
     -- modifiable
@@ -306,7 +304,7 @@ end
 -- Ban a user from a channel.
 -- @param self Channel object
 -- @param name User to ban
-function ban(self, name)
+function channel:ban(name)
     irc.send("MODE", self.name, "+b", name)
 end
 -- }}}
@@ -317,7 +315,7 @@ end
 -- Remove a ban on a user.
 -- @param self Channel object
 -- @param name User to unban
-function unban(self, name)
+function channel:unban(name)
     irc.send("MODE", self.name, "-b", name)
 end
 -- }}}
@@ -327,7 +325,7 @@ end
 -- Give a user voice on a channel.
 -- @param self Channel object
 -- @param name User to give voice to
-function voice(self, name)
+function channel:voice(name)
     irc.send("MODE", self.name, "+v", name)
 end
 -- }}}
@@ -337,7 +335,7 @@ end
 -- Remove voice from a user.
 -- @param self Channel object
 -- @param name User to remove voice from
-function devoice(self, name)
+function channel:devoice(name)
     irc.send("MODE", self.name, "-v", name)
 end
 -- }}}
@@ -347,7 +345,7 @@ end
 -- Give a user ops on a channel.
 -- @param self Channel object
 -- @param name User to op
-function op(self, name)
+function channel:op(name)
     irc.send("MODE", self.name, "+o", name)
 end
 -- }}}
@@ -357,7 +355,7 @@ end
 -- Remove ops from a user.
 -- @param self Channel object
 -- @param name User to remove ops from
-function deop(self, name)
+function channel:deop(name)
     irc.send("MODE", self.name, "-o", name)
 end
 -- }}}
@@ -368,7 +366,7 @@ end
 -- @param self      Channel object
 -- @param new_limit New value for the channel limit (optional; limit is unset
 --                  if this argument isn't passed)
-function set_limit(self, new_limit)
+function channel:set_limit(new_limit)
     if new_limit then
         irc.send("MODE", self.name, "+l", new_limit)
     else
@@ -383,7 +381,7 @@ end
 -- @param self Channel object
 -- @param key  New channel password (optional; password is unset if this
 --             argument isn't passed)
-function set_key(self, key)
+function channel:set_key(key)
     if key then
         irc.send("MODE", self.name, "+k", key)
     else
@@ -397,7 +395,7 @@ end
 -- Set the private state of a channel.
 -- @param self Channel object
 -- @param set  True to set the channel as private, false to unset it
-function set_private(self, set)
+function channel:set_private(set)
     set_basic_mode(self, set, "p")
 end
 -- }}}
@@ -407,7 +405,7 @@ end
 -- Set the secret state of a channel.
 -- @param self Channel object
 -- @param set  True to set the channel as secret, false to unset it
-function set_secret(self, set)
+function channel:set_secret(set)
     set_basic_mode(self, set, "s")
 end
 -- }}}
@@ -417,7 +415,7 @@ end
 -- Set whether joining the channel requires an invite.
 -- @param self Channel object
 -- @param set  True to set the channel invite only, false to unset it
-function set_invite_only(self, set)
+function channel:set_invite_only(set)
     set_basic_mode(self, set, "i")
 end
 -- }}}
@@ -427,7 +425,7 @@ end
 -- If true, the topic can only be changed by an op.
 -- @param self Channel object
 -- @param set  True to lock the topic, false to unlock it
-function set_topic_lock(self, set)
+function channel:set_topic_lock(set)
     set_basic_mode(self, set, "t")
 end
 -- }}}
@@ -438,7 +436,7 @@ end
 -- @param self Channel object
 -- @param set  True to require users to be in the channel to send messages to
 --             it, false to remove this restriction
-function set_no_outside_messages(self, set)
+function channel:set_no_outside_messages(set)
     set_basic_mode(self, set, "n")
 end
 -- }}}
@@ -448,7 +446,7 @@ end
 -- Set whether voice is required to speak.
 -- @param self Channel object
 -- @param set  True to set the channel as moderated, false to unset it
-function set_moderated(self, set)
+function channel:set_moderated(set)
     set_basic_mode(self, set, "m")
 end
 -- }}}
@@ -461,7 +459,7 @@ end
 -- @param self Channel object
 -- @param nick Nick to search for
 -- @return True if the nick is in the channel, false otherwise
-function contains(self, nick)
+function channel:contains(nick)
     for member in self:each_member() do
         local member_nick = member:gsub('@+', '')
         if member_nick == nick then
@@ -473,3 +471,5 @@ end
 -- }}}
 -- }}}
 -- }}}
+
+return channel

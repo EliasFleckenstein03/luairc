@@ -1,19 +1,16 @@
 ---
 -- Implementation of IRC server message parsing
 -- initialization {{{
-local base =      _G
-local constants = require 'irc.constants'
-local ctcp =      require 'irc.ctcp'
-local irc_debug = require 'irc.debug'
-local misc =      require 'irc.misc'
-local socket =    require 'socket'
-local string =    require 'string'
-local table =     require 'table'
+local constants = libs.constants
+local ctcp =      libs.ctcp
+local irc_debug = libs.debug
+local misc =      libs.misc
+local socket =    libs.socket
 -- }}}
 
 ---
 -- This module contains parsing functions for IRC server messages.
-module 'irc.message'
+local message = {}
 
 -- internal functions {{{
 -- _parse {{{
@@ -32,7 +29,7 @@ module 'irc.message'
 --                             to the received command</li>
 --
 --         </ul>
-function _parse(str)
+function message._parse(str)
     -- low-level ctcp quoting {{{
     str = ctcp._low_dequote(str)
     -- }}}
@@ -49,8 +46,8 @@ function _parse(str)
     local reply = false
     if command:find("^%d%d%d$") then
         reply = true
-        if constants.replies[base.tonumber(command)] then
-            command = constants.replies[base.tonumber(command)]
+        if constants.replies[tonumber(command)] then
+            command = constants.replies[tonumber(command)]
         else
             irc_debug._warn("Unknown server reply: " .. command)
         end
@@ -67,3 +64,5 @@ function _parse(str)
 end
 -- }}}
 -- }}}
+
+return message

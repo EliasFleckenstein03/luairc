@@ -1,17 +1,13 @@
 ---
 -- Basic debug output
--- initialization {{{
-local base = _G
-local io =   require 'io'
--- }}}
 
 ---
 -- This module implements a few useful debug functions for use throughout the
 -- rest of the code.
-module 'irc.debug'
+local irc_debug = {}
 
 -- defaults {{{
-COLOR = true
+irc_debug.COLOR = true
 -- }}}
 
 -- local variables {{{
@@ -27,10 +23,10 @@ local outfile = io.output()
 -- @param msg      Message text
 -- @param color    Which terminal code to use for color output (defaults to
 --                 dark gray)
-function _message(msg_type, msg, color)
+function irc_debug._message(msg_type, msg, color)
     if ON then
         local endcolor = ""
-        if COLOR and outfile == io.stdout then
+        if irc_debug.COLOR and outfile == io.stdout then
             color = color or "\027[1;30m"
             endcolor = "\027[0m"
         else
@@ -48,9 +44,9 @@ end
 -- error().
 -- @param msg Error message
 -- @see error
-function _err(msg)
-    _message("ERR", msg, "\027[0;31m")
-    base.error(msg, 2)
+function irc_debug._err(msg)
+    irc_debug._message("ERR", msg, "\027[0;31m")
+    error(msg, 2)
 end
 -- }}}
 
@@ -58,8 +54,8 @@ end
 --
 -- Signal a warning. Writes the warning message to the screen in yellow.
 -- @param msg Warning message
-function _warn(msg)
-    _message("WARN", msg, "\027[0;33m")
+function irc_debug._warn(msg)
+    irc_debug._message("WARN", msg, "\027[0;33m")
 end
 -- }}}
 -- }}}
@@ -68,7 +64,7 @@ end
 -- enable {{{
 ---
 -- Turns on debug output.
-function enable()
+function irc_debug.enable()
     ON = true
 end
 -- }}}
@@ -76,7 +72,7 @@ end
 -- disable {{{
 ---
 -- Turns off debug output.
-function disable()
+function irc_debug.disable()
     ON = false
 end
 -- }}}
@@ -85,8 +81,10 @@ end
 ---
 -- Redirects output to a file rather than stdout.
 -- @param file File to write debug output to
-function set_output(file)
-    outfile = base.assert(io.open(file))
+function irc_debug.set_output(file)
+    outfile = assert(io.open(file))
 end
 -- }}}
 -- }}}
+
+return irc_debug
